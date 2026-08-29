@@ -1,0 +1,96 @@
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Python build / bytecode ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+MANIFEST
+
+# ── Editable install artifacts ────────────────────────────────────────────────
+*.dist-info/
+*.egg-link
+pip-wheel-metadata/
+
+# ── Pytest / coverage ─────────────────────────────────────────────────────────
+.pytest_cache/
+.cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# ── Hypothesis ────────────────────────────────────────────────────────────────
+.hypothesis/
+
+# ── VCR cassettes (check in only if you want reproducible HTTP snapshots) ─────
+# cassettes/
+
+# ── Pipeline work directories ─────────────────────────────────────────────────
+# Content-addressed stage outputs written by ArtifactStore
+run_*/
+work/
+
+# ── Audio / MIDI scratch files (fixtures are kept; scratch outputs are not) ───
+# Keep: tests/fixtures/*.mid  tests/fixtures/*.wav  tests/fixtures/*.json
+# Ignore: anything generated at pipeline runtime
+outputs/
+stems/
+renders/
+*.flac
+*.mp3
+*.aiff
+*.ogg
+
+# ── Model weights & large blobs ───────────────────────────────────────────────
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+*.h5
+
+# ── Configs with secrets ──────────────────────────────────────────────────────
+.env
+.env.*
+secrets.yaml
+secrets.json
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── mypy / pyright / ruff ─────────────────────────────────────────────────────
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+MIDI2AUDIO_IMPLEMENTATION_PLAN_v1.1.md
+
+fixtures/

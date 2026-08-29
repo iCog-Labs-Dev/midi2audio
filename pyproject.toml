@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midi2audio"
+version = "0.1.0"
+description = "Automated MIDI to production-quality audio pipeline."
+requires-python = ">=3.11"
+dependencies = []   # intentionally empty — everything is in extras
+
+[project.optional-dependencies]
+core = [
+  "pretty-midi",
+  "miditoolkit",
+  "music21",
+  "mido",
+  "numpy",
+  "scipy",
+  "librosa",
+  "soundfile",
+  "soxr",            # [v1.1] endpoints return 44.1 kHz; pipeline is 48 kHz
+  "mir_eval",        # [v1.1] matched onset F-measure
+  "pyloudnorm",      # [v1.1] LUFS — the plan sets LUFS targets in five places
+  "pedalboard",      # [v1.1] high-pass / EQ / bus compression
+  "pydantic>=2.0",
+  "pyyaml",
+  "tenacity",
+]
+audio = [
+  "midi2audio[core]",
+  "madmom",
+  "demucs",
+  "basic-pitch",
+  "laion-clap",
+  "matchering",
+]
+restyle = [
+  "midi2audio[audio]",
+  "httpx",
+]
+dev = [
+  "midi2audio[core]",
+  "pytest",
+  "pytest-cov",
+  "hypothesis",
+  "vcrpy",
+]
+
+[tool.setuptools.packages.find]
+include = ["m2a*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "smoke: opt-in live endpoint tests (set MIDI2AUDIO_SMOKE=1)",
+  "slow: tests that take > 10 seconds",
+]
