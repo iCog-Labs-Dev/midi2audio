@@ -1,0 +1,60 @@
+pipeline:
+  sample_rate: 48000
+  headroom_dbfs: -12.0
+  cache_dir: ".cache/m2a"
+  artifacts_dir: "artifacts"
+  soundfont_path: "soundfonts/GeneralUser_GS.sf2"
+
+budget:
+  max_endpoint_calls: 30
+  max_usd_estimate: 15.0
+
+stage0_analysis:
+  chord_window_bars: 0.5
+  quantization_threshold_ms: 12.0
+  flat_velocity_threshold_std: 3.0
+
+stage1_groove:
+  swing:
+    ratio: 0.58
+    subdivision: 8
+    applies_to: ["drums", "bass", "comp"]
+  microtiming_ms:
+    drums:
+      by_position_16: [0.0, -2.0, 6.0, 3.0, 0.0, -1.0, 7.0, 2.0, 0.0, -2.0, 6.0, 3.0, 0.0, -1.0, 7.0, 2.0]
+      global_offset: 0.0
+      jitter_sd: 2.0
+    bass:
+      by_position_16: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      global_offset: 8.0
+      jitter_sd: 3.0
+    comp:
+      by_position_16: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      global_offset: -4.0
+      jitter_sd: 2.0
+    lead:
+      by_position_16: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      global_offset: -12.0
+      jitter_sd: 4.0
+  velocity:
+    accent_map_16: [1.0, 0.6, 0.7, 0.65, 0.9, 0.6, 0.75, 0.65, 1.0, 0.6, 0.7, 0.65, 0.9, 0.6, 0.75, 0.65]
+    phrase_arc:
+      shape: "crescendo_to_bar4"
+      depth: 0.2
+    ghost_notes:
+      drums_snare:
+        pitch: 38
+        prob: 0.15
+        vel_scale: 0.35
+  anticipation:
+    comp:
+      prob: 0.25
+      push_ms: [-60.0, -30.0]
+      at: "chord_changes"
+  articulation:
+    bass:
+      duration_scale: 0.85
+      strum_ms: 0.0
+    comp:
+      duration_scale: 0.70
+      strum_ms: 12.0

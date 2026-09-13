@@ -1,0 +1,34 @@
+Metadata-Version: 2.4
+Name: midi2audio
+Version: 0.1.0
+Summary: Reference-track-anchored multitrack MIDI expressivization, rendering, and generative restyling pipeline
+Author-email: Autonomous DSP Agent <agent@dsp-pipeline.internal>
+License-Expression: MIT
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: pretty_midi>=0.2.10
+Requires-Dist: miditoolkit>=0.1.16
+Requires-Dist: music21>=9.1.0
+Requires-Dist: mido>=1.3.2
+Requires-Dist: numpy>=1.26.0
+Requires-Dist: scipy>=1.11.0
+Requires-Dist: librosa>=0.10.1
+Requires-Dist: soundfile>=0.12.1
+Requires-Dist: pyfluidsynth>=1.3.3
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: pyyaml>=6.0.1
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: tenacity>=8.2.3
+Provides-Extra: advanced-dsp
+Requires-Dist: madmom>=0.16.1; extra == "advanced-dsp"
+Requires-Dist: demucs>=4.0.1; extra == "advanced-dsp"
+Requires-Dist: basic-pitch>=0.3.0; extra == "advanced-dsp"
+Requires-Dist: matchering>=2.0.6; extra == "advanced-dsp"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: hypothesis>=6.92.0; extra == "dev"
+Requires-Dist: vcrpy>=5.0.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.12.0; extra == "dev"
+
+# MIDI to Audio Pipeline
+Automated reference-track-anchored audio generation pipeline.
