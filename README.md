@@ -16,7 +16,7 @@ produce a MIDI file can feed it.
 | Milestone | Description | Status |
 |-----------|-------------|--------|
 | **M0** | Contract & scaffolding | ✅ Complete |
-| M1 | Deterministic spine (MIDI → WAV stems) | 🔲 Not started |
+| **M1** | Deterministic spine (MIDI → WAV stems) | ✅ Complete |
 | M1.5 | Microtonal path | 🔲 Not started |
 | M2 | Scoring | 🔲 Not started |
 | M3 | One endpoint end-to-end | 🔲 Not started |
@@ -60,26 +60,80 @@ DECISIONS.md   # 16 pre-seeded design decisions (D001–D016)
 
 ---
 
+## What's in M1
+
+M1 is the deterministic spine: MIDI in → expressivized MIDI → dry WAV stems
+out. Zero network calls, zero paid endpoints. The only impure operations are
+disk I/O and the (fully mocked/injectable) LLM groove-author call, which is
+cached immediately.
+
+```
+m2a/
+├── analysis/
+│   └── from_midi.py    # Stage 0: MIDI -> structure.json (tempo/meter/key/
+│                        #   chords/sections/tracks via pretty_midi + music21)
+├── groove/
+│   ├── spec.py          # GrooveSpec — the LLM output contract (pydantic)
+│   ├── author.py        # LLM call + validate + retry (never patches invalid specs)
+│   └── apply.py         # Pure applicator: swing, meter-aware microtiming,
+│                         #   velocity accent, ghost notes, articulation
+├── render/
+│   ├── fluidsynth_r.py  # Stage 2: dry WAV stem via the FluidSynth CLI
+│   └── registry.py      # Renderer selection by (role, microtonal)
+├── config.py             # AudioConfig / GrooveConfig (D008: midi_gpt off by default)
+└── orchestrator.py       # S0->S1->S2 DAG runner with content-addressed caching
+
+scripts/
+└── run_pipeline.py       # CLI: analyse | expressivize | render-audio (M3)
+```
+
+Notes on scope and decisions made while implementing M1:
+
+- **D001** (tick rounding) resolved: round-half-even at serialization time;
+  per-transformation offsets accumulate additively but are each computed
+  from the note's *original* metrical position (see `DECISIONS.md`).
+- Track identity is index-based (`structure.tracks[i].idx`), matching D016's
+  convention from M0 — the applicator and renderer expand **roles** to track
+  indices via a role map (D009), never by name.
+- `GrooveSpec.anticipation`, `.tempo_curve`, and `VelocitySpec.phrase_arc` are
+  accepted by the schema but raise `NotImplementedError` if set — deferred to
+  a later milestone rather than silently no-op'd.
+- Swing's tempo-scaling formula is implemented exactly as specified (Friberg
+  & Sundström 2002, holding the off-beat note's absolute duration constant);
+  at large tempo jumps it can clamp to straight time (ratio_eff = 0.5) sooner
+  than the plan's worked example assumed — see the test suite for the exact
+  behaviour at 150 vs. 240 BPM.
+
+---
+
 ## Quick start
 
 ```bash
 # 1. Create and activate a virtual environment (Python 3.11)
-uv venv .venv --python 3.11
+python3.11 -m venv .venv
 source .venv/bin/activate
 
-# 2. Install the package in editable mode with core + test deps
-#    (The full [dev] extra requires llvmlite to build — see D010 note below)
-uv pip install -e . pydantic pyyaml mido soundfile numpy pytest pytest-cov hypothesis vcrpy
+# 2. Install the package in editable mode with dev deps
+pip install -e ".[dev]"
 
-# 3. Generate binary fixture files (MIDI + WAV)
+# 3. Install the FluidSynth CLI (M1 Stage 2 renderer)
+brew install fluid-synth   # macOS; apt-get install fluidsynth on Debian/Ubuntu
+
+# 4. Generate binary fixture files (MIDI + WAV)
 python scripts/generate_fixtures.py
 
-# 4. Run the M0 test suite
-pytest tests/test_bootstrap.py tests/test_contracts.py \
-       tests/test_artifacts.py tests/test_fixtures.py -v
+# 5. Run the full test suite
+pytest -v
 ```
 
-Expected output: **32 passed**.
+Expected output: **76 passed**.
+
+> **D010 note:** on some machines, `pip install -e ".[dev]"` fails building
+> `librosa`'s `numba → llvmlite` dependency from source (no prebuilt wheel
+> for that Python build). None of the M1 code actually imports `librosa` —
+> if you hit this, either use a Python interpreter/distribution that has a
+> prebuilt `llvmlite` wheel available, or drop `librosa` from the `core`
+> extra in `pyproject.toml` until a later milestone genuinely needs it.
 
 ---
 
@@ -119,17 +173,12 @@ the same schema — validated at the boundary by `StructureJSON` in
 ## Open design decisions
 
 See [`DECISIONS.md`](DECISIONS.md) for all 16 decisions (D001–D016). Key
-unresolved items before M1 begins:
+unresolved items before M1.5 begins:
 
-- **D001** — Tick rounding policy (groove applicator)
 - **D004** — Microtonal cents threshold
 - **D010** — Dependency environment topology (`madmom`, `demucs`, `basic-pitch`,
-  `laion-clap` co-resolution on Python 3.11) — **verify in week 1**
-
-> **D010 note:** `librosa → numba → llvmlite` fails to build from source on
-> some machines (x86 macOS). The `dev` extra in `pyproject.toml` intentionally
-> separates heavy audio deps into `[audio]`/`[restyle]` extras. Until D010 is
-> resolved, install only the packages listed in the Quick start above.
+  `laion-clap` co-resolution on Python 3.11) — see the D010 note under
+  Quick start; M1 itself needs none of these.
 
 ---
 
@@ -140,7 +189,7 @@ unresolved items before M1 begins:
 pytest tests/test_bootstrap.py tests/test_contracts.py \
        tests/test_artifacts.py tests/test_fixtures.py -v
 
-# All tests (once M1+ deps are installed)
+# All tests (M0 + M1; requires the fluidsynth CLI on PATH)
 pytest -v
 
 # With coverage

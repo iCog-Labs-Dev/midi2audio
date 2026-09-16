@@ -4,7 +4,12 @@
 Before: M1 Step 1.2 (groove applicator)
 Question: When a groove timing offset lands between ticks, do we round-half-even or truncate?
 Do offsets accumulate across multiple transformations or are they absolute per note?
-Resolution: [TBD]
+Resolution: Round-half-even to the nearest tick (Python's built-in `round`), applied once at
+serialization time. Offsets accumulate additively across the transformation pipeline (swing +
+microtiming + strum all contribute to one running delta per note), but each transformation's own
+contribution is computed from the note's *original* quantised metrical position, not from the
+position after previously-applied transformations — otherwise a note's grid-slot lookup would
+drift off its intended position as stages compose.
 
 ## D002 — Crossfade law
 Before: M3 Step 3.2 (chunking)
