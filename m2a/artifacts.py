@@ -33,6 +33,15 @@ def content_hash(*file_paths: str, config: dict, code_version: str) -> str:
     return h.hexdigest()
 
 
+def file_sha256(path: str) -> str:
+    """Plain streamed SHA-256 of one file (no config / code-version salt)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
 class ArtifactStore:
     """Manages a flat directory of stage outputs, each identified by (stage, hash).
 

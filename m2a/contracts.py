@@ -76,6 +76,11 @@ class TrackInfo(BaseModel):
     pitch_range: list[int] = Field(default_factory=list)
     microtonal: bool = False
 
+    @property
+    def label(self) -> str:
+        """Canonical track label: the advisory name, else `track{idx:02d}_{role}`."""
+        return self.name or f"track{self.idx:02d}_{self.role}"
+
 
 class SectionInfo(BaseModel):
     """One structural section (e.g. intro, verse, chorus)."""

@@ -15,10 +15,12 @@ import hashlib
 import json
 from pathlib import Path
 
+import mido
 import numpy as np
 import pretty_midi
 
 from m2a.contracts import StructureJSON
+from m2a.midi_io import TempoMap, read_track_notes
 
 FLAT_VELOCITY_STD_THRESHOLD = 2.0
 QUANTIZED_FRACTION_THRESHOLD = 0.85
@@ -39,7 +41,7 @@ def analyse_midi(midi_path: str, out_path: str, edo: int = 12, base_tuning: floa
     key_map = _infer_key(pm)
     chords = _infer_chords(pm, bar_table)
     sections = _detect_sections(pm, bar_table)
-    tracks = [_analyse_track(idx, inst, bar_table) for idx, inst in enumerate(pm.instruments)]
+    tracks = [_analyse_track(idx, inst, bar_table) for idx, inst in _instruments_by_track(midi_path)]
 
     data = {
         "schema": "midi2audio.structure/1",
@@ -69,6 +71,25 @@ def load_structure(path: str) -> StructureJSON:
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+def _instruments_by_track(midi_path: str) -> list[tuple[int, "pretty_midi.Instrument"]]:
+    """One instrument per score.mid track that has notes, keyed by its mido
+    track index (contract invariant 1). pretty_midi's own instrument list is
+    ordered by (program, channel) and skips note-less conductor tracks, so its
+    positions do not match the track indices the renderer extracts by."""
+    mid = mido.MidiFile(midi_path)
+    tempo = TempoMap(mid)
+    out: list[tuple[int, pretty_midi.Instrument]] = []
+    for idx, track in enumerate(mid.tracks):
+        notes = read_track_notes(mid, idx, tempo)
+        if not notes:
+            continue
+        is_drum = all(n.channel == 9 for n in notes)
+        inst = pretty_midi.Instrument(program=notes[0].program, is_drum=is_drum, name=track.name or "")
+        inst.notes = [pretty_midi.Note(n.velocity, n.pitch, n.start_sec, n.end_sec) for n in notes]
+        out.append((idx, inst))
+    return out
+
 
 def _file_hash(path: str) -> str:
     h = hashlib.sha256()
