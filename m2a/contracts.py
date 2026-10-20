@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 
 # ── Python-side contracts (frozen dataclasses) ──────────────────────────────
@@ -75,6 +75,18 @@ class TrackInfo(BaseModel):
     onset_profile_16: list[float] = Field(default_factory=list)
     pitch_range: list[int] = Field(default_factory=list)
     microtonal: bool = False
+    _duplicate_name: bool = PrivateAttr(default=False)
+
+    @property
+    def label(self) -> str:
+        """Canonical, unique-within-the-structure track label (stem filenames, Stem.track).
+
+        The advisory name when it is set and unique; otherwise
+        `track{idx:02d}_{role}` (names are often empty or duplicated in DAW exports).
+        """
+        if self.name and not self._duplicate_name:
+            return self.name
+        return f"track{self.idx:02d}_{self.role}"
 
 
 class SectionInfo(BaseModel):
@@ -116,6 +128,9 @@ class StructureJSON(BaseModel):
         idxs = [t.idx for t in self.tracks]
         if len(set(idxs)) != len(idxs):
             raise ValueError(f"duplicate track idx in structure.tracks: {idxs}")
+        names = [t.name for t in self.tracks]
+        for t in self.tracks:
+            t._duplicate_name = bool(t.name) and names.count(t.name) > 1
         # Invariant 5: microtonal tracks must have safe method in tuning.json
         # (cross-file check performed by orchestrator at run time)
         return self

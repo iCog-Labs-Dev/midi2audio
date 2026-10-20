@@ -41,6 +41,7 @@ restyle = [
 ]
 dev = [
   "midi2audio[core]",
+  "httpx",           # restyle endpoint wrappers are exercised with httpx.MockTransport
   "pytest",
   "pytest-cov",
   "hypothesis",

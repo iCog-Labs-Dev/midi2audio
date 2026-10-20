@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 """scripts/run_pipeline.py — midi2audio command-line entry point.
 
-`analyse` and `expressivize` are wired to the M1 deterministic spine.
-`render-audio` (the full restyle pipeline) is not yet wired — that lands in
-M3 once the scorer (M2) exists to gate paid endpoint calls.
+`analyse` and `expressivize` run the M1 deterministic spine stages.
+`render-audio` runs the whole M3 pipeline: package -> spine -> per-stem
+restyle search through one endpoint, gated by the M2 scorer and the budget
+guard. The default endpoint is the offline mock (no network, no cost);
+`--endpoint stable_audio` uses Stable Audio 2.5 and needs STABILITY_API_KEY.
+
+Exit codes for render-audio: 0 ok, 2 no acceptable candidate in --strict
+mode, 3 input contract violation.
 """
 from __future__ import annotations
 
@@ -15,7 +20,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from m2a.analysis.from_midi import analyse_midi, load_structure
-from m2a.config import GrooveConfig
+from m2a.config import GrooveConfig, load_config
 from m2a.groove.apply import apply_groove
 from m2a.groove.author import author_groove_spec
 from m2a.groove.spec import GrooveSpec
@@ -55,9 +60,44 @@ def _cmd_expressivize(args: argparse.Namespace) -> int:
 
 
 def _cmd_render_audio(args: argparse.Namespace) -> int:
-    print("render-audio is not yet wired — the full restyle pipeline lands in M3.",
-          file=sys.stderr)
-    return 1
+    from m2a.orchestrator import Orchestrator
+    from m2a.package import ContractViolation, build_render_package
+    from m2a.search.loop import NoAcceptableCandidateError
+
+    cfg = load_config(args.profile)
+    if args.endpoint:
+        cfg.restyle.endpoint = args.endpoint
+    if args.budget_calls is not None:
+        cfg.budget.max_calls = args.budget_calls
+    if args.budget_usd is not None:
+        cfg.budget.max_usd = args.budget_usd
+    if args.strict:
+        cfg.search.on_no_candidate = "strict"
+
+    out_dir = pathlib.Path(args.out)
+    work_dir = pathlib.Path(args.work) if args.work else out_dir / "work"
+    try:
+        package = build_render_package(args.midi, str(work_dir / "packages"),
+                                       structure_path=args.structure, tuning_path=args.tuning)
+        refs = args.refs[0] if args.refs else None
+        result = Orchestrator(cfg, str(work_dir)).run(package, str(out_dir), refs_dir=refs)
+    except ContractViolation as e:
+        print(f"input contract violation: {e}", file=sys.stderr)
+        return 3
+    except NoAcceptableCandidateError as e:
+        print(f"strict mode: {e}", file=sys.stderr)
+        return 2
+
+    manifest = json.loads(pathlib.Path(result.manifest_path).read_text())
+    for s in manifest["stems"]:
+        note = f" (fallback: {s['fallback_reason']})" if s["fallback_reason"] else ""
+        print(f"  {s['stem']:<12} {s['source']:<16} score={s['total_score']:.3f} "
+              f"tried={s['candidates_tried']}{note}")
+    t = manifest["totals"]
+    print(f"Wrote {result.out_dir}: {t['endpoint_calls']} endpoint calls, "
+          f"~${t['usd_estimate']:.2f}, cache hit rate {t['cache_hit_rate']:.0%}, "
+          f"{t['wall_clock_s']:.1f}s")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -77,12 +117,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_expr.add_argument("--out", default="./output")
     p_expr.set_defaults(func=_cmd_expressivize)
 
-    p_render = sub.add_parser("render-audio", help="Full pipeline (not yet wired; see M3)")
+    p_render = sub.add_parser("render-audio", help="Full pipeline: MIDI -> scored, restyled stems")
     p_render.add_argument("midi", help="Input MIDI file")
-    p_render.add_argument("--structure", help="Existing structure.json")
+    p_render.add_argument("--structure", help="Existing structure.json (skip inference)")
+    p_render.add_argument("--tuning", help="tuning.json (default: 12-EDO direct_12)")
     p_render.add_argument("--profile", default="config/default.yaml")
-    p_render.add_argument("--refs", nargs="*", help="Reference audio files")
-    p_render.add_argument("--budget-calls", type=int, default=200)
+    p_render.add_argument("--refs", nargs="*", help="Reference corpus directory (for FAD + style card)")
+    p_render.add_argument("--endpoint", choices=["offline", "stable_audio"],
+                          help="Restyle endpoint (default from profile: offline)")
+    p_render.add_argument("--budget-calls", type=int, default=None)
+    p_render.add_argument("--budget-usd", type=float, default=None)
+    p_render.add_argument("--strict", action="store_true",
+                          help="Fail instead of falling back to the dry stem (D012)")
+    p_render.add_argument("--work", help="Cache/work directory (default: <out>/work)")
     p_render.add_argument("--out", default="./output")
     p_render.set_defaults(func=_cmd_render_audio)
 

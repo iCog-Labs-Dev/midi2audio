@@ -15,10 +15,12 @@ import hashlib
 import json
 from pathlib import Path
 
+import mido
 import numpy as np
 import pretty_midi
 
 from m2a.contracts import StructureJSON
+from m2a.midi_io import TempoMap, read_track_notes
 
 FLAT_VELOCITY_STD_THRESHOLD = 2.0
 QUANTIZED_FRACTION_THRESHOLD = 0.85
@@ -39,7 +41,7 @@ def analyse_midi(midi_path: str, out_path: str, edo: int = 12, base_tuning: floa
     key_map = _infer_key(pm)
     chords = _infer_chords(pm, bar_table)
     sections = _detect_sections(pm, bar_table)
-    tracks = [_analyse_track(idx, inst, bar_table) for idx, inst in enumerate(pm.instruments)]
+    tracks = [_analyse_track(idx, inst, bar_table) for idx, inst in _instruments_by_track(midi_path)]
 
     data = {
         "schema": "midi2audio.structure/1",
@@ -69,6 +71,25 @@ def load_structure(path: str) -> StructureJSON:
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+def _instruments_by_track(midi_path: str) -> list[tuple[int, "pretty_midi.Instrument"]]:
+    """One instrument per score.mid track that has notes, keyed by its mido
+    track index (contract invariant 1). pretty_midi's own instrument list is
+    ordered by (program, channel) and skips note-less conductor tracks, so its
+    positions do not match the track indices the renderer extracts by."""
+    mid = mido.MidiFile(midi_path)
+    tempo = TempoMap(mid)
+    out: list[tuple[int, pretty_midi.Instrument]] = []
+    for idx, track in enumerate(mid.tracks):
+        notes = read_track_notes(mid, idx, tempo)
+        if not notes:
+            continue
+        is_drum = all(n.channel == 9 for n in notes)
+        inst = pretty_midi.Instrument(program=notes[0].program, is_drum=is_drum, name=track.name or "")
+        inst.notes = [pretty_midi.Note(n.velocity, n.pitch, n.start_sec, n.end_sec) for n in notes]
+        out.append((idx, inst))
+    return out
+
 
 def _file_hash(path: str) -> str:
     h = hashlib.sha256()
@@ -245,8 +266,7 @@ def _detect_sections(pm: "pretty_midi.PrettyMIDI", bar_table: list[list[float]])
         end = boundaries[j + 1] if j + 1 < len(boundaries) else n_bars
         if end <= start:
             continue
-        seg_energy = float(bar_vectors[start:end].mean() / 127.0) if bar_vectors.size else 0.0
-        seg_energy = min(max(seg_energy, 0.0), 1.0)
+        seg_energy = _section_energy(pm, bar_times[start], bar_times[end])
         boundary_novelty = float(novelty[start]) if start < len(novelty) else 0.0
         boundary_lvl = int(min(3, boundary_novelty / max(threshold, 1e-9))) if threshold > 0 else 0
         boundary_lvl = max(0, min(3, boundary_lvl))
@@ -258,6 +278,21 @@ def _detect_sections(pm: "pretty_midi.PrettyMIDI", bar_table: list[list[float]])
             "boundary_lvl": boundary_lvl,
         })
     return sections
+
+
+ENERGY_FULL_DENSITY = 8.0   # notes per second at which the density term saturates
+
+
+def _section_energy(pm: "pretty_midi.PrettyMIDI", start: float, end: float) -> float:
+    """Half mean velocity, half note density, in [0, 1]. (The mean of the piano
+    roll over all 128 pitches, used before, is ~0.01 for any real music and
+    pinned every section's energy near zero.)"""
+    notes = [n for inst in pm.instruments for n in inst.notes if start <= n.start < end]
+    if not notes or end <= start:
+        return 0.0
+    velocity = float(np.mean([n.velocity for n in notes])) / 127.0
+    density = min(1.0, len(notes) / (end - start) / ENERGY_FULL_DENSITY)
+    return float(min(1.0, max(0.0, 0.5 * velocity + 0.5 * density)))
 
 
 def _infer_role(inst: "pretty_midi.Instrument") -> str:
