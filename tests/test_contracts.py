@@ -75,3 +75,13 @@ def test_track_idx_present():
     s = StructureJSON.model_validate(data)
     for i, track in enumerate(s.tracks):
         assert track.idx == i
+
+
+def test_duplicate_track_names_get_unique_labels():
+    """Invariant 1: names are advisory and may repeat; labels (stem filenames) must not."""
+    data = load_fixture("eight_bar_structure.json")
+    data["tracks"][1]["name"] = data["tracks"][2]["name"] = "Audio 1"
+    data["tracks"][3]["name"] = ""
+    s = StructureJSON.model_validate(data)
+    labels = [t.label for t in s.tracks]
+    assert labels == ["drums", "track01_bass", "track02_comping", "track03_lead"]

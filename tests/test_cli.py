@@ -28,8 +28,11 @@ def test_expressivize_command_with_neutral_spec(tmp_path):
     assert (tmp_path / "expressive.mid").exists()
 
 
-def test_render_audio_not_yet_wired(tmp_path):
+def test_render_audio_help_lists_m3_options():
+    """End-to-end render-audio runs live in tests/test_pipeline_run.py (slow)."""
     result = subprocess.run([
-        sys.executable, "scripts/run_pipeline.py", "render-audio", FIXTURE_MIDI,
+        sys.executable, "scripts/run_pipeline.py", "render-audio", "--help",
     ], capture_output=True, text=True)
-    assert result.returncode != 0
+    assert result.returncode == 0
+    for flag in ("--endpoint", "--budget-calls", "--budget-usd", "--strict", "--refs", "--tuning"):
+        assert flag in result.stdout
