@@ -94,3 +94,6 @@ logs/
 
 
 fixtures/
+
+# render-audio default output directory
+output/

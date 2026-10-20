@@ -1,0 +1,29 @@
+# config/default.yaml — default pipeline profile. Every key is optional; an
+# unknown key is an error (m2a.config.load_config).
+
+groove:
+  style_intent: neutral
+  seed: 0
+
+scoring:
+  clap: auto            # auto | laion | off — auto drops the axis if laion_clap is absent
+  transcriber: cqt      # cqt (built-in) | basic_pitch ([audio] extra)
+
+search:
+  seeds: 2
+  n_prompt_variants: 2
+  strength_grid: null   # null: role x energy schedule from m2a.restyle.policy
+  refine: true
+  on_no_candidate: fallback_dry   # D012: fallback_dry | strict
+
+budget:
+  max_calls: 200
+  max_usd: 20.0
+  max_calls_per_stem: 40
+
+restyle:
+  endpoint: offline     # offline (mock, free) | stable_audio (needs STABILITY_API_KEY)
+  usd_per_call: null
+  style_notes: ""
+
+midi_gpt: false         # D008 — CC-BY-NC gated, must stay off by default

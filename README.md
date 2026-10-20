@@ -17,9 +17,9 @@ produce a MIDI file can feed it.
 |-----------|-------------|--------|
 | **M0** | Contract & scaffolding | ✅ Complete |
 | **M1** | Deterministic spine (MIDI → WAV stems) | ✅ Complete |
-| M1.5 | Microtonal path | 🔲 Not started |
-| M2 | Scoring | 🔲 Not started |
-| M3 | One endpoint end-to-end | 🔲 Not started |
+| **M1.5** | Microtonal path | ✅ Complete |
+| **M2** | Scoring | ✅ Complete |
+| **M3** | One endpoint end-to-end | ✅ Complete |
 | M4 | Reference corpus | 🔲 Not started |
 | M5 | Breadth | 🔲 Not started |
 | M6 | Single-reference mode | 🔲 Not started |
@@ -106,6 +106,81 @@ Notes on scope and decisions made while implementing M1:
 
 ---
 
+## What's in M1.5 — microtonal path
+
+```
+m2a/
+├── midi_io.py            # per-track notes by mido track index + merged tempo map
+├── package.py            # RenderPackage assembly + the five contract invariants
+├── render/
+│   ├── tuning.py         # EDO -> .scl, MTS bulk dump, pitch decoding, MPE channel rotation
+│   ├── fluidsynth_r.py   # + FluidSynthMpeRenderer: tuning-exact via per-note pitch bends
+│   ├── ddsp_r.py         # MidiDdspRenderer(mode="f0_contour"): harmonic+noise synth on the EDO f0
+│   ├── sfizz_r.py        # opt-in 12-EDO sfizz renderer (needs sfz_instruments config)
+│   └── registry.py       # (role, microtonal) -> ordered renderer preference table
+└── scoring/
+    └── tuning_check.py   # cents deviation from the *intended* EDO pitch (D004)
+```
+
+- **Pitch encoding** is declared by `tuning.json.method`: `direct_12`, key-mapped
+  `scala` / `mts_esp` (key `k` = EDO step `k - base_tuning`), or `mpe` (key + bend).
+- Microtonal pitched tracks never touch a 12-EDO path (P6); a 19-EDO part
+  rendered on the 12-EDO path is caught by the tuning gate (tested).
+- Deviations from the plan's renderer table are recorded as **D017**.
+- Fixed while wiring the boundary: `from_midi` numbered tracks by pretty_midi
+  instrument order, so a note-less conductor track shifted every `idx` and the
+  renderer extracted the wrong track. Tracks are now indexed by mido track.
+
+---
+
+## What's in M2 — scoring
+
+```
+m2a/scoring/
+├── rhythm.py      # onset F-measure: chords collapsed, shift-aligned first, mir_eval matching
+├── notes.py       # 0.7 * transcription F1 + 0.3 * CQT-chroma cosine vs the dry stem
+├── clap_sim.py    # cos(audio, prompt) - cos(audio, negative); pluggable encoder
+├── fad.py         # Fréchet Audio Distance + per-corpus tau (median leave-one-out)
+├── tuning_check.py
+└── combine.py     # per-role weights and floors; floors on raw values, then a
+                   #   weighted sum over axes normalised to [0, 1] (FAD as exp(-fad/tau))
+```
+
+Every scorer has monotonicity tests. Axes that are not applicable (notes on
+drums) or not available (no CLAP model, no reference corpus) are dropped and
+their weight redistributed, so totals stay in [0, 1] and comparable. Heavy
+models are optional (D010): the built-in CQT transcriber and log-mel FAD
+embedder need no downloads; basic-pitch and laion-clap plug in when installed.
+
+---
+
+## What's in M3 — one endpoint end-to-end
+
+```
+m2a/
+├── restyle/
+│   ├── base.py           # RestyleEndpoint protocol, error taxonomy, divergence <-> provider strength (D011)
+│   ├── stable_audio.py   # Stable Audio 2.5 a2a: httpx + tenacity, 403 = content policy
+│   ├── offline.py        # deterministic offline endpoint (CI / dry runs, zero cost)
+│   ├── chunking.py       # seams on downbeats by boundary_lvl, 2-bar overlap, aligned linear fade (D002)
+│   └── policy.py         # divergence grid: role x section energy; microtonal -> [] (P6)
+├── prompts/
+│   ├── stylecard.py      # measured reference features -> descriptors + negatives
+│   └── generate.py       # per-stem variants; "instrumental"/"vocals" and odd-meter counters baked in
+├── search/loop.py        # BudgetGuard (calls, USD, per stem), request-hash cache, successive halving
+├── manifest.py           # run provenance: stages, every call, per-stem outcome, decisions (§8.1)
+└── orchestrator.py       # + run(): spine -> S3 search per stem -> stems, rough mix, click, manifest
+```
+
+- Cache hits never count against the budget; a re-run with `max_calls: 0`
+  reproduces the same output hashes (tested).
+- When nothing clears the floors a stem falls back to its dry render and is
+  flagged in the manifest (D012); `--strict` exits 2 instead.
+- `render-audio` on the 8-bar fixture with the offline endpoint completes in
+  well under 60 s (tested).
+
+---
+
 ## Quick start
 
 ```bash
@@ -124,16 +199,24 @@ python scripts/generate_fixtures.py
 
 # 5. Run the full test suite
 pytest -v
+
+# 6. Render the fixture end to end (offline endpoint: no network, no cost)
+python scripts/run_pipeline.py render-audio tests/fixtures/eight_bar.mid --out ./output
 ```
 
-Expected output: **76 passed**.
+Expected output: **214 passed, 2 skipped** (live CLAP and the live-endpoint smoke test).
 
-> **D010 note:** on some machines, `pip install -e ".[dev]"` fails building
-> `librosa`'s `numba → llvmlite` dependency from source (no prebuilt wheel
-> for that Python build). None of the M1 code actually imports `librosa` —
-> if you hit this, either use a Python interpreter/distribution that has a
-> prebuilt `llvmlite` wheel available, or drop `librosa` from the `core`
-> extra in `pyproject.toml` until a later milestone genuinely needs it.
+> **D010 note:** on Intel macOS, `llvmlite >= 0.46` (pulled in by
+> `librosa -> numba`) has no prebuilt wheel and fails to build. Pin a wheel-backed
+> pair when installing: `pip install -e ".[dev]" "numba==0.62.1" "llvmlite==0.45.1" "numpy<2.4"`.
+> librosa is required from M1.5 on (f0 tracking, onsets, CQT).
+
+`render-audio` options: `--endpoint offline|stable_audio` (the latter reads
+`STABILITY_API_KEY`), `--refs DIR` (reference corpus for FAD + the style card),
+`--structure` / `--tuning` (supply instead of infer; required for microtonal
+material), `--budget-calls`, `--budget-usd`, `--strict`, `--profile` (YAML
+overlay of `config/default.yaml`). Output: `stems/`, `rough_mix.wav`,
+`click.wav`, `bar_table.json`, `scores.json`, `manifest.json`.
 
 ---
 
@@ -172,13 +255,11 @@ the same schema — validated at the boundary by `StructureJSON` in
 
 ## Open design decisions
 
-See [`DECISIONS.md`](DECISIONS.md) for all 16 decisions (D001–D016). Key
-unresolved items before M1.5 begins:
-
-- **D004** — Microtonal cents threshold
-- **D010** — Dependency environment topology (`madmom`, `demucs`, `basic-pitch`,
-  `laion-clap` co-resolution on Python 3.11) — see the D010 note under
-  Quick start; M1 itself needs none of these.
+See [`DECISIONS.md`](DECISIONS.md) (D001–D018). Resolved through M3: D001,
+D002, D004, D005, D008, D009, D010, D011, D012, D016, plus D017 (microtonal
+renderer deviations) and D018 (endpoint tests without cassettes). D013 is
+resolved for the interim; still open before M4: **D003** (LUFS targets),
+**D013** (final FAD embedding/estimator), **D015** (full-mix scoring).
 
 ---
 
@@ -189,7 +270,10 @@ unresolved items before M1.5 begins:
 pytest tests/test_bootstrap.py tests/test_contracts.py \
        tests/test_artifacts.py tests/test_fixtures.py -v
 
-# All tests (M0 + M1; requires the fluidsynth CLI on PATH)
+# Fast suite (skips the >10 s end-to-end runs)
+pytest -m "not slow"
+
+# All tests (requires the fluidsynth CLI on PATH)
 pytest -v
 
 # With coverage
